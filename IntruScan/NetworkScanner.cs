@@ -2,11 +2,40 @@
 using System.Net.NetworkInformation;
 using System.Text.RegularExpressions;
 using System.Diagnostics;
+using System.Timers;
 
 namespace IntruScan;
 
 public class NetworkScanner
 {
+    private readonly List<string> _whitelist = new();
+    private readonly List<DeviceInfo> _connectionHistory = new();
+    private readonly System.Timers.Timer _scanTimer;
+
+    public event Action<DeviceInfo> OnNewDeviceDetected;
+
+    public NetworkScanner()
+    {
+        // Schedule periodic scans every 5 minutes
+        _scanTimer = new System.Timers.Timer(300000); // 5 minutes in milliseconds
+        _scanTimer.Elapsed += async (sender, e) => await ScanAsync();
+        _scanTimer.AutoReset = true;
+    }
+
+    public void StartScanning() => _scanTimer.Start();
+
+    public void StopScanning() => _scanTimer.Stop();
+
+    public void AddToWhitelist(string macAddress)
+    {
+        if (!_whitelist.Contains(macAddress))
+        {
+            _whitelist.Add(macAddress);
+        }
+    }
+
+    public List<DeviceInfo> GetConnectionHistory() => _connectionHistory;
+
     public async Task<List<DeviceInfo>> ScanAsync()
     {
         string baseIp = GetLocalSubnet();
@@ -18,7 +47,21 @@ public class NetworkScanner
             if (await PingHost(ip))
             {
                 string mac = GetMacFromArp(ip);
-                results.Add(new DeviceInfo { IP = ip, MAC = mac });
+                var device = new DeviceInfo { IP = ip, MAC = mac };
+
+                // Check if the device is new and not in the whitelist
+                if (!_whitelist.Contains(mac) && !_connectionHistory.Any(d => d.MAC == mac))
+                {
+                    OnNewDeviceDetected?.Invoke(device); // Trigger alert
+                }
+
+                // Add to connection history
+                if (!_connectionHistory.Any(d => d.MAC == mac))
+                {
+                    _connectionHistory.Add(device);
+                }
+
+                results.Add(device);
             }
         });
 
@@ -26,7 +69,7 @@ public class NetworkScanner
         return results;
     }
 
-    string GetLocalSubnet()
+    private string GetLocalSubnet()
     {
         string localIp = Dns.GetHostAddresses(Dns.GetHostName())
                             .First(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
@@ -35,7 +78,7 @@ public class NetworkScanner
         return $"{parts[0]}.{parts[1]}.{parts[2]}.";
     }
 
-    async Task<bool> PingHost(string ip)
+    private async Task<bool> PingHost(string ip)
     {
         try
         {
@@ -46,7 +89,7 @@ public class NetworkScanner
         catch { return false; }
     }
 
-    string GetMacFromArp(string ip)
+    private string GetMacFromArp(string ip)
     {
         var psi = new ProcessStartInfo
         {
