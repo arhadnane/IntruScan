@@ -3,7 +3,7 @@
              x:Class="IntruScan.MainPage">
 
     <VerticalStackLayout Padding="20" Spacing="10">
-        <Button Text="Scanner le réseau" Clicked="OnScanClicked"/>
+        <Button Text="Scan network" Clicked="OnScanClicked"/>
         <CollectionView x:Name="DeviceListView">
             <CollectionView.ItemTemplate>
                 <DataTemplate>
